@@ -1,3 +1,34 @@
+def create_res32(rng, lr_fn):
+    model = ResNet32()
+    variables = model.init(rng, jnp.ones((4, 32, 32, 3)), training=False)
+    print('initialized parameter shapes:\n', jax.tree_util.tree_map(jnp.shape, unfreeze(variables)))
+
+    # ---- SWAG Hyperparameter ----
+    freq        = 351                         # snapshot frequency (step) ; once per epoch ; 45000/128 = 351
+    rank        = 20                         # low-rank approximation K
+    burnin_ep   = 160                         # burn-in epochs
+    start_step  = burnin_ep * trn_steps_per_epoch
+
+    tx = optax.chain(
+        optax.sgd(learning_rate=lr_fn,      # 1) SGD
+                    momentum=0.9, nesterov=True),
+        swag(freq=freq, rank=rank,          # 2) SWAG (Calculate \Sigma_SWAG)
+                start_step=start_step)
+    )
+
+    class TrainState(train_state.TrainState): # We don't use dropout in ResNet
+        pass
+
+    state = TrainState.create(
+        apply_fn   = model.apply,
+        params     = variables['params'],
+        tx         = tx
+    )
+    return state
+    
+state = create_res32(rng, scheduler)
+
+metrics_history = defaultdict(list)
 for epoch in range(epochs):
     start_time = time.time()
 
